@@ -1,0 +1,178 @@
+---
+title: "ML AI Assignment"
+author: "Shubhang Periwal 19201104"
+date: "4/19/2020"
+output:
+  pdf_document:
+    latex_engine: xelatex
+
+---
+
+
+
+
+```{r}
+library(keras) 
+tensorflow::tf$random$set_seed(0)
+library(tfruns)
+library(reticulate)
+library(jsonlite)
+ load("data_usps_digits.RData") #loading the data into R
+```
+
+
+```{r}
+# helper function
+# to plot the digit
+plot_digit <- function(index, data) {
+tmp <- (-data + 1) / 2 # to convert back to original
+z <- matrix( data = as.numeric(data[index, 256:1]), 16, 16 )
+image(z[16:1,1:16], col = gray((1:100)/100),
+xaxt = "n", yaxt = "n")
+}
+
+# plot few example digits
+par(mfrow = c(1,2), mar = rep(1.5, 4))
+plot_digit(14, x_train)
+plot_digit(900, x_train)
+
+
+```
+
+```{r}
+#preprocessing
+# Convert y to categorical using one-hot encoding
+y_train <- to_categorical(y_train, num_classes = 10)
+y_test <- to_categorical(y_test , num_classes = 10)
+# convert x_train and x_test from data frame to matrix for valid network input
+x_train <- as.matrix(x_train)
+x_test <- as.matrix(x_test)
+
+# normalizen x(input) to 0-1
+range_norm <- function(x, a = 0, b = 1) {
+( (x - min(x)) / (max(x) - min(x)) )*(b - a) + a }
+
+x_train <- apply(x_train, 2, range_norm)
+x_test <- apply(x_test, 2, range_norm)
+range(x_train)
+range(x_test)
+```
+
+
+```{r}
+#coverting the x datasets to matrices:
+x_train<-as.matrix(x_train)
+x_test<-as.matrix(x_test)
+
+```
+
+
+
+
+
+
+```{r}
+# split the test data in two halves: one for validation
+# and the other for actual testing
+val <- sample(1:nrow(x_test), 1000) # there are 10000 images in x_test
+test <- setdiff(1:nrow(x_test), val)
+x_val <- x_test[val,]
+y_val <- y_test[val,]
+x_test <- x_test[test,]
+y_test <- y_test[test,]
+# need these later
+N <- nrow(x_train)
+V <- ncol(x_train)
+```
+
+
+
+```{r}
+#setting a grid of values for the flags/hyperparameters of interest:
+hdlayer1 <- c(128,64,256)
+dropout1 <- c(0,0.1,0.3) 
+hdlayer2 <- c(64,32)
+dropout2 <- c(0,0.2)
+hdlayer3 <- c(64,32,16,8)
+dropout3 <- c(0,0.1,0.3)
+# total combinations 3 x 3 x 2 x 2 x 4 x 3 = 432
+```
+
+
+```{r}
+# run ---------------------------------------------------------------
+runs <- tuning_run("assignment3config.R", #creating runs to simulate output
+                     runs_dir = "runs_assignment", 
+                     flags = list(
+                    hdlayer_1 = hdlayer1,
+                    dropout_1 = dropout1,
+                    hdlayer_2 = hdlayer2,
+                    dropout_2 = dropout2,
+                    hdlayer_3 = hdlayer3,
+                    dropout_3 = dropout3
+                       ), 
+                   sample = 0.2)
+#sampling 86 models
+
+```
+
+
+```{r}
+#Determing the optimal configuration for the data
+#Extracting values from the stored runs
+
+read_metrics <- function(path, files =NULL)
+{
+path <- paste0(path, "/")
+if(is.null(files)) files <- list.files(path)
+n <- length(files)
+out <- vector("list", n)
+for(i in 1:n) {
+dir <- paste0(path, files[i], "/tfruns.d/")
+out[[i]] <- jsonlite::fromJSON(paste0(dir, "metrics.json"))
+out[[i]]$flags <- jsonlite::fromJSON(paste0(dir, "flags.json"))
+out[[i]]$evaluation <- jsonlite::fromJSON(paste0(dir,"evaluation.json"))
+}
+return(out)
+}
+#Plotting the corresponding validation learning curves
+plot_learning_curve <- function(x, ylab = NULL, cols = NULL, top = 3,
+span = 0.4, ...)
+{
+smooth_line <- function(y) {
+x <- 1:length(y)
+out <- predict(loess(y~x, span = span))
+return(out)
+}
+matplot(x, ylab = ylab, xlab = "Epochs", type = "n", ...)
+grid()
+matplot(x, pch = 19, col = adjustcolor(cols, 0.3), add = TRUE)
+tmp <- apply(x, 2, smooth_line)
+tmp <- sapply(tmp, "length<-", max(lengths(tmp)))
+set <- order(apply(tmp, 2, max, na.rm = TRUE), decreasing = TRUE)[1:top]
+cl <- rep(cols, ncol(tmp))
+cl[set] <- "deepskyblue2"
+matlines(tmp, lty = 1, col = cl, lwd = 2)
+}
+```
+
+
+```{r}
+# extract results
+out <- read_metrics("runs_assignment")
+# extract validation accuracy and plot learning curve
+acc <- sapply(out, "[[", "val_accuracy")
+plot_learning_curve(acc, col = adjustcolor("black", 0.3), ylim = c(0.85, 1),ylab = "Val accuracy", top = 3)
+```
+
+
+```{r}
+res1<- ls_runs(metric_val_accuracy > 0.87, runs_dir = "runs_assignment", order = metric_val_accuracy)
+res1
+```
+
+```{r}
+res1 <- res1[,c(2,4,8:13)] 
+res1[1:10,] 
+```
+
